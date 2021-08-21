@@ -1,0 +1,20 @@
+[Main]
+sourceDir=C:\Users\jecat\source\repos\ecdis-rep-last\InstallerImage
+defaultDestDir=%ProgramFiles(x86)%\CAIM\ECDIS900_5
+
+[FileGroups]
+Number=3
+; n=<sourceFolder>,<destFolder>
+; <sourceFolder> is a subfolder of sourceDir which will be copied at once
+; <destFolder> is a physical destination which could be either an actual path or one of predefined paths as follows:
+;  - one of env variables like %ProgramFiles(x86)%, whatever
+1=Charts,c:\_Charts
+2=Ecdis_UserData,c:\_Ecdis_UserData
+3=CAIM,%programfiles(x86)%\CAIM
+
+[Shortcuts]
+Number=4
+1=CAIM\ECDIS900.lnk,%programfiles(x86)%\CAIM\ECDIS900_5\bin\ecdis900.exe,ECDIS900
+2=CAIM\sm.lnk,%programfiles(x86)%\CAIM\SMonitor\SMonitor.exe,Sensor Monitor
+3=startup\sm.lnk,%programfiles(x86)%\CAIM\SMonitor\SMonitor.exe,Sensor Monitor
+4=startup\CaptureScreenClientApp.lnk,%programfiles(x86)%\CAIM\ECDIS900_5\bin\CaptureScreenClientApp.exe,CaptureScreenClient
