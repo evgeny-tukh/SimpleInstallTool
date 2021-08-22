@@ -1,0 +1,8 @@
+*.obj
+*.pdb
+*.res
+*.exe
+*.ilk
+*.lib
+*.zip
+*.rar

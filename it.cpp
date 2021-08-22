@@ -6,6 +6,8 @@
 #include <stdint.h>
 #include <string>
 #include <vector>
+#include <time.h>
+#include "unzipTool.h"
 
 struct Cfg {
     std::string sourceDir, script, destDir, defDestDir;
@@ -349,6 +351,23 @@ int main (int argCount, char *args []) {
         cfg.destDir = path;
     }
 
+    printf ("Extracting the package...\n");
+
+    auto packagePath = cfg.getString ("Main", "package");
+
+    if (packagePath.empty ()) {
+        printf ("Package is not specified in the script.'n");
+        exit (0);
+    }
+
+    char tempPath [MAX_PATH];
+    char tempFolder [100];
+    GetTempPath (sizeof (tempPath), tempPath);
+    PathAppend (tempPath, std::to_string (time (0)).c_str ());
+    PathRenameExtension (tempPath, ".tmp");
+    CreateDirectory (tempPath, 0);
+    unzipArchive (packagePath.c_str (), false, true, tempPath, 0);
+
     printf ("Copying files...\n");
 
     auto numOfFileGroups = cfg.getInt ("FileGroups", "Number");
@@ -370,7 +389,7 @@ int main (int argCount, char *args []) {
                     destFolder = path;
                 }
 
-                copyFolder (destFolder.c_str (), PathCombine (path, cfg.sourceDir.c_str (), sourceSubFolder.c_str ()));
+                copyFolder (destFolder.c_str (), PathCombine (path, /*cfg.sourceDir.c_str ()*/tempPath, sourceSubFolder.c_str ()));
             }
         }
     }
