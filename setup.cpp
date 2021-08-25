@@ -290,3 +290,33 @@ std::string browseForFolder (const char *title) {
     return result;
 }
 
+void registerApp (
+    const char *appKey,
+    const char *appName,
+    const char *uninstCmd,
+    const char *location,
+    const char *publisher,
+    u_long verMajor,
+    u_long verMinor
+) {
+    HKEY uninstallKey, productKey;
+    char locationCopy [MAX_PATH];
+    char uninstCmdCopy[MAX_PATH];
+
+    ExpandEnvironmentStrings (location, locationCopy, sizeof (locationCopy));
+    ExpandEnvironmentStrings (uninstCmd, uninstCmdCopy, sizeof (uninstCmdCopy));
+
+    if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, "Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", 0, KEY_ALL_ACCESS, & uninstallKey) == ERROR_SUCCESS) {
+        if (RegCreateKeyEx (uninstallKey, appKey, 0, 0, 0, KEY_ALL_ACCESS, 0, & productKey, 0) == ERROR_SUCCESS) {
+            RegSetValueEx (productKey, "DisplayName", 0, REG_SZ, (const BYTE *) appName, strlen (appName) + 1);
+            RegSetValueEx (productKey, "UninstallPath", 0, REG_EXPAND_SZ, (const BYTE *) uninstCmdCopy, strlen (uninstCmdCopy) + 1);
+            RegSetValueEx (productKey, "InstallLocation", 0, REG_EXPAND_SZ, (const BYTE *) locationCopy, strlen (locationCopy) + 1);
+            RegSetValueEx (productKey, "Publisher", 0, REG_SZ, (const BYTE *) publisher, strlen (publisher) + 1);
+            RegSetValueEx (productKey, "VersionMajor", 0, REG_DWORD, (const BYTE *) & verMajor, sizeof (verMajor));
+            RegSetValueEx (productKey, "VersionMinor", 0, REG_DWORD, (const BYTE *) & verMinor, sizeof (verMinor));
+            RegCloseKey (productKey);
+        }
+
+        RegCloseKey (uninstallKey);
+    }
+}

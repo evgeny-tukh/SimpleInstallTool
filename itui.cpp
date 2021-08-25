@@ -417,6 +417,20 @@ void installProc (HWND wnd) {
         }
     }
 
+    addStringToLog ("Registering application...");
+    std::string location = cfg.getString ("Main", "uninstPath").c_str ();
+    char uninstPath [MAX_PATH];
+    PathCombine (uninstPath, location.c_str (), "uninst.exe");
+    registerApp (
+        cfg.getString ("Main", "appKey").c_str (),
+        cfg.getString ("Main", "appName").c_str (),
+        uninstPath,
+        location.c_str (),
+        cfg.getString ("Main", "publisher").c_str (),
+        cfg.getInt ("Main", "verMajor"),
+        cfg.getInt ("Main", "verMinor")
+    );
+
     addStringToLog ("Installation done.");
     ctx->done = true;
     ctx->flushLog ();
@@ -429,7 +443,7 @@ void installProc (HWND wnd) {
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
     Ctx ctx (instance);
 
-    //checkElevate (& ctx.exiting);
+    checkElevate (& ctx.exiting);
 
     INITCOMMONCONTROLSEX ctlData { sizeof (INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES };
 

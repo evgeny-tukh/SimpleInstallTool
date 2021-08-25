@@ -15,3 +15,13 @@ void checkCreateFolder (const char *path);
 void copyFolder (const char *dest, const char *source, std::function<void (char *msg)> cb);
 std::string getFolderLocation (ITEMIDLIST *folder);
 std::string browseForFolder (const char *title);
+
+void registerApp (
+    const char *appKey,
+    const char *appName,
+    const char *uninstCmd,
+    const char *location,
+    const char *publisher,
+    u_long verMajor,
+    u_long verMinor
+);
