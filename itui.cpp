@@ -81,8 +81,13 @@ void paintWindow (HWND wnd) {
 void updateWindow (HWND wnd, bool installation, bool done) {
     ShowWindow (GetDlgItem (wnd, IDC_PRG_GROUP), installation || done ? SW_HIDE : SW_SHOW);
     ShowWindow (GetDlgItem (wnd, IDC_PRG_GROUP_LBL), installation || done ? SW_HIDE : SW_SHOW);
+    ShowWindow (GetDlgItem (wnd, IDC_RUN_LBL), installation || done ? SW_HIDE : SW_SHOW);
     ShowWindow (GetDlgItem (wnd, IDC_LOG), installation && !done ? SW_SHOW : SW_HIDE);
     ShowWindow (GetDlgItem (wnd, IDC_INSTALL), !installation && !done ? SW_SHOW : SW_HIDE);
+
+    for (auto i = 0; i < 10; ++ i) {
+        ShowWindow (GetDlgItem (wnd, IDC_FIRST_TASK + i), installation || done ? SW_HIDE : SW_SHOW);
+    }
 }
 
 void initWindow (HWND wnd, void *data) {
@@ -104,10 +109,24 @@ void initWindow (HWND wnd, void *data) {
     createControl ("BUTTON", "&Install", WS_TABSTOP | BS_PUSHBUTTON | BS_DEFPUSHBUTTON, true, client.right - 220, client.bottom - 45, 100, 35, IDC_INSTALL);
     createControl ("BUTTON", "&Cancel", WS_TABSTOP | BS_PUSHBUTTON, true, client.right - 110, client.bottom - 45, 100, 35, IDC_CANCEL);
     createControl ("LISTBOX", "", WS_BORDER, false, 320, 10, client.right - 330, client.bottom - 55, IDC_LOG);
-    createControl ("EDIT", "", WS_TABSTOP | WS_BORDER | ES_LEFT, true, 450, 10, client.right - 460, 25, IDC_PRG_GROUP);
+    createControl ("EDIT", cfg.getString ("Shortcuts", "DefProgramGroup").c_str (), WS_TABSTOP | WS_BORDER | ES_LEFT, true, 450, 10, client.right - 460, 25, IDC_PRG_GROUP);
     createControl ("STATIC", "Program group", SS_LEFT, true, 320, 10, 100, 25, IDC_PRG_GROUP_LBL);
+    createControl ("STATIC", "Run after instalation the following tasks:", SS_LEFT, true, 320, 50, 400, 25, IDC_RUN_LBL);
+
+    auto numOfTasks = cfg.getInt ("Tasks", "number");
+
+    for (auto i = 1, y = 80; i <= numOfTasks; ++ i, y += 40) {
+        auto info = cfg.getString ("Tasks", std::to_string (i).c_str ());
+
+        std::vector<std::string> parts;
+
+        splitLine (info, parts, ',');
+
+        if (parts.size () > 0) {
+            createControl ("BUTTON", parts [0].c_str (), WS_TABSTOP | BS_CHECKBOX | BS_AUTOCHECKBOX, true, 320, y, 400, 35, IDC_FIRST_TASK + i - 1);
+        }
+    }
     
-    SetDlgItemText (wnd, IDC_PRG_GROUP, cfg.getString ("Shortcuts", "DefProgramGroup").c_str ());
     ctx->initialized = true;
 }
 
@@ -155,6 +174,87 @@ void initCommonControls () {
     InitCommonControlsEx (& data);
 }
 
+bool isMsi (char *path) {
+    char pathU [MAX_PATH];
+
+    strcpy (pathU, path);
+    strupr (pathU);
+
+    return strstr (pathU, ".MSI") != 0;
+}
+
+void executeTaskAndWait (const char *tasksFolder, const char *cmd) {
+    char *buffer = _strdup (cmd);
+    char *param;
+    char cmdPath [MAX_PATH];
+
+    if (buffer [0] == '"') {
+        param = strchr (buffer + 1, '"');
+
+        if (param) {
+            ++ param;
+            while (*param == ' ') *(param++) = '\0';
+        } else {
+            // No closing quote
+            return;
+        }
+    } else {
+        param = strchr (buffer + 1, ' ');
+
+        if (param) {
+            while (*param == ' ') *(param++) = '\0';
+        }
+    }
+
+    if (param && !*param) param = 0;
+
+    PathCombine (cmdPath, tasksFolder, buffer);
+
+    STARTUPINFO startupInfo;
+    PROCESS_INFORMATION processInfo;
+    memset (& startupInfo, 0, sizeof (startupInfo));
+    memset (& processInfo, 0, sizeof (processInfo));
+
+    startupInfo.cb = sizeof (startupInfo);
+    
+    unsigned long error;
+
+    char workingFolder [MAX_PATH];
+
+    strcpy (workingFolder, cmdPath);
+    PathRemoveFileSpec (workingFolder);
+
+    if (isMsi (cmdPath)) {
+        SHELLEXECUTEINFO info;
+        memset (& info, 0, sizeof (info));
+        info.cbSize = sizeof (info);
+        info.lpVerb = "open";
+        info.lpFile = cmdPath;
+        info.lpParameters = param;
+        info.lpDirectory = workingFolder;
+        info.nShow = SW_SHOW;
+        info.fMask = SEE_MASK_NOCLOSEPROCESS;
+
+        if (ShellExecute (0, "open", cmdPath, param, workingFolder, SW_SHOW)) {
+            WaitForSingleObject (info.hProcess, INFINITE);
+            CloseHandle (info.hProcess);
+        }
+        /*std::string msiPath (cmdPath);
+
+        if (param) {
+            msiPath += ' ';
+            msiPath += param;
+        }
+        result = CreateProcess (0, (char *) msiPath.c_str (), 0, 0, 0, 0, 0, workingFolder, & startupInfo, & processInfo);*/
+    } else {
+        if (CreateProcess (cmdPath, param, 0, 0, 0, 0, 0, workingFolder, & startupInfo, & processInfo)) {
+            WaitForSingleObject (processInfo.hProcess, INFINITE);
+            CloseHandle (processInfo.hProcess);
+            CloseHandle (processInfo.hThread);
+        }
+    }
+}
+
 void installProc (HWND wnd) {
     Ctx *ctx = (Ctx *) GetWindowLongPtr (wnd, GWLP_USERDATA);
     Cfg cfg;
@@ -168,6 +268,13 @@ void installProc (HWND wnd) {
     auto now = time (0);
     sprintf (msg, "Started at %s", ctime (& now));
     ctx->logString (msg);
+
+    auto numOfTasks = cfg.getInt ("Tasks", "number");
+    std::vector<bool> taskFlags;
+
+    for (auto i = 0; i < numOfTasks; ++ i) {
+        taskFlags.push_back (IsDlgButtonChecked (wnd, IDC_FIRST_TASK + i) == BST_CHECKED);
+    }
 
     CoInitialize (0);
     GetWindowText (prgGroup, programGroup, sizeof (programGroup));
@@ -289,6 +396,27 @@ void installProc (HWND wnd) {
         }
     }
 
+    addStringToLog ("Executing tasks...");
+
+    for (auto i = 1, y = 80; i <= numOfTasks; ++ i, y += 40) {
+        auto info = cfg.getString ("Tasks", std::to_string (i).c_str ());
+
+        std::vector<std::string> parts;
+
+        splitLine (info, parts, ',');
+
+        char tasksFolder [MAX_PATH];
+        PathCombine (tasksFolder, tempPath, "tasks");
+        
+        if (parts.size () > 0) {
+            if (taskFlags [i-1]) {
+                addStringToLog (parts [0].c_str ());
+
+                executeTaskAndWait (tasksFolder, parts [1].c_str ());
+            }
+        }
+    }
+
     addStringToLog ("Installation done.");
     ctx->done = true;
     ctx->flushLog ();
@@ -301,7 +429,7 @@ void installProc (HWND wnd) {
 int APIENTRY WinMain (HINSTANCE instance, HINSTANCE prev, char *cmdLine, int showCmd) {
     Ctx ctx (instance);
 
-    checkElevate (& ctx.exiting);
+    //checkElevate (& ctx.exiting);
 
     INITCOMMONCONTROLSEX ctlData { sizeof (INITCOMMONCONTROLSEX), ICC_WIN95_CLASSES };
 

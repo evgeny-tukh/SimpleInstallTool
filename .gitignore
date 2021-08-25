@@ -6,3 +6,4 @@
 *.lib
 *.zip
 *.rar
+bin/*
