@@ -2,8 +2,9 @@
 ;sourceDir=C:\Users\jecat\source\repos\ecdis-rep-last\InstallerImage
 defaultDestDir=%ProgramFiles(x86)%\MARIS\ECDIS900_4
 package=image.zip
-appName=MARIS ECDIS900
+appName=SIMRAD ECDIS900
 appKey=MECDIS900
+appIcon=%programfiles(x86)%\MARIS\ECDIS900_4\bin\ecdis900.exe
 verMajor=5
 verMinor=0
 uninstPath=%programfiles(x86)%\MARIS\ECDIS900_4

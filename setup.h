@@ -19,6 +19,7 @@ std::string browseForFolder (const char *title);
 void registerApp (
     const char *appKey,
     const char *appName,
+    const char *appIcon,
     const char *uninstCmd,
     const char *location,
     const char *publisher,

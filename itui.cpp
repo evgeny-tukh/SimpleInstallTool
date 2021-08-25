@@ -424,6 +424,7 @@ void installProc (HWND wnd) {
     registerApp (
         cfg.getString ("Main", "appKey").c_str (),
         cfg.getString ("Main", "appName").c_str (),
+        cfg.getString ("Main", "appIcon").c_str (),
         uninstPath,
         location.c_str (),
         cfg.getString ("Main", "publisher").c_str (),
