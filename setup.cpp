@@ -9,6 +9,8 @@
 #include <functional>
 #include <time.h>
 #include "unzipTool.h"
+#include "setup.h"
+#include "cfg.h"
 
 void splitLine (std::string& line, std::vector<std::string>& parts, char separator) {
     parts.clear ();
@@ -61,6 +63,8 @@ bool makeShortcut (const char *cmd, const char *link, const char *desc) {
 
             // Save the link by calling IPersistFile::Save. 
             result = SUCCEEDED (fileInterf->Save (uncodePath, TRUE));
+
+            /*if (result)*/ registerAction (SetupAction::CREATE_SHORTCUT, path);
 
             fileInterf->Release(); 
         } else {
@@ -138,7 +142,12 @@ void checkCreateFolder (const char *path) {
     if (!PathFileExists (path)) {
         wchar_t unicodePath [MAX_PATH];
         MultiByteToWideChar (CP_ACP, 0, path, -1, unicodePath, MAX_PATH);
+
+        bool exists = PathFileExists (path);
+
         SHCreateDirectory (GetConsoleWindow (), unicodePath);
+
+        if (!exists) registerAction (SetupAction::CREATE_DIR, (char *) path);
     }
 }
 
@@ -241,7 +250,11 @@ void copyFolder (const char *dest, const char *source, std::function<void (char 
                 };
 
                 if (isSourceIsNewerThanDest (sourcePath, destPath)) {
-                    sprintf (msg, "Copying %s...%s.", destPath, CopyFile (sourcePath, destPath, FALSE) ? "ok" : "failed");
+                    bool done = CopyFile (sourcePath, destPath, FALSE);
+
+                    if (done) registerAction (SetupAction::COPY_FILE, destPath);
+
+                    sprintf (msg, "Copying %s...%s.", destPath, done ? "ok" : "failed");
                 } else {
                     sprintf (msg, "Skipped %s.", sourcePath);
                 }
@@ -322,5 +335,30 @@ void registerApp (
         }
 
         RegCloseKey (uninstallKey);
+    }
+}
+
+void registerAction (SetupAction action, char *subject) {
+    static FILE *journal = 0;
+
+    if (!journal) {
+        Cfg cfg;
+        std::string journalPath = cfg.getString ("Main", "journalPath");
+        char journalPathName [MAX_PATH];
+        journal = fopen (PathCombine (journalPathName, journalPath.c_str (), "install.jou"), "a");
+    }
+
+    if (journal) {
+        char *actionName;
+
+        switch (action) {
+            case SetupAction::COPY_FILE: actionName = "copyFile"; break;
+            case SetupAction::CREATE_DIR: actionName = "createDir"; break;
+            case SetupAction::CREATE_SHORTCUT: actionName = "createShortcut"; break;
+            default: actionName = "unknownAction";
+        }
+
+        fprintf (journal, "%s,%s\n", actionName, subject);
+        fflush (journal);
     }
 }
