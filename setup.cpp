@@ -12,6 +12,20 @@
 #include "setup.h"
 #include "cfg.h"
 
+const char *UNINST_KEY = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";
+const char *CLS_NAME = "SiInToWi";
+const char *SECTION_MAIN = "Main";
+const char *SECTION_TASKS = "Tasks";
+const char *SECTION_FILE_GROUPS = "FileGroups";
+const char *SECTION_SHORTCUTS = "Shortcuts";
+const char *ERROR_TEXT = "Error";
+const char *STARTUP = "__startup__";
+const char *PRGGRP = "__prggrp__";
+const size_t STARTUP_LEN = strlen (STARTUP);
+const size_t PRGGRP_LEN = strlen (PRGGRP);
+const char *UNINST_SHORTCUT = "uninst.lnk";
+const char *UNINST_JOURNAL = "install.jou";
+
 void splitLine (std::string& line, std::vector<std::string>& parts, char separator) {
     parts.clear ();
     parts.emplace_back ();
@@ -25,7 +39,7 @@ void splitLine (std::string& line, std::vector<std::string>& parts, char separat
     }
 }
 
-bool makeShortcut (const char *cmd, const char *link, const char *desc) { 
+bool makeShortcut (const char *cmd, const char *args, const char *link, const char *desc) { 
     IShellLink* shellLnkInterf; 
     bool result = true;
 
@@ -38,6 +52,7 @@ bool makeShortcut (const char *cmd, const char *link, const char *desc) {
         // Set the path to the shortcut target and add the description. 
         shellLnkInterf->SetPath (cmd); 
         shellLnkInterf->SetDescription (desc); 
+        shellLnkInterf->SetArguments (args);
 
         // Query IShellLink for the IPersistFile interface, used for saving the 
         // shortcut in persistent storage. 
@@ -64,7 +79,7 @@ bool makeShortcut (const char *cmd, const char *link, const char *desc) {
             // Save the link by calling IPersistFile::Save. 
             result = SUCCEEDED (fileInterf->Save (uncodePath, TRUE));
 
-            /*if (result)*/ registerAction (SetupAction::CREATE_SHORTCUT, path);
+            /*if (result)*/ registerAction (Journal::Action::CREATE_SHORTCUT, path);
 
             fileInterf->Release(); 
         } else {
@@ -106,7 +121,7 @@ bool isAdmin () {
     return admin;
 }
 
-bool checkElevate (bool *exiting) {
+bool checkElevate (bool *exiting, char *cmdLine) {
     bool result;
 
     if (isAdmin ()) {
@@ -126,6 +141,7 @@ bool checkElevate (bool *exiting) {
         info.cbSize = sizeof (info);
         info.lpVerb = "runas";
         info.lpFile = path;
+        info.lpParameters = cmdLine;
         info.nShow = SW_NORMAL;
         
         result = ShellExecuteEx (& info) == ERROR_SUCCESS;
@@ -147,7 +163,7 @@ void checkCreateFolder (const char *path) {
 
         SHCreateDirectory (GetConsoleWindow (), unicodePath);
 
-        if (!exists) registerAction (SetupAction::CREATE_DIR, (char *) path);
+        if (!exists) registerAction (Journal::Action::CREATE_DIR, (char *) path);
     }
 }
 
@@ -252,7 +268,7 @@ void copyFolder (const char *dest, const char *source, std::function<void (char 
                 if (isSourceIsNewerThanDest (sourcePath, destPath)) {
                     bool done = CopyFile (sourcePath, destPath, FALSE);
 
-                    if (done) registerAction (SetupAction::COPY_FILE, destPath);
+                    if (done) registerAction (Journal::Action::COPY_FILE, destPath);
 
                     sprintf (msg, "Copying %s...%s.", destPath, done ? "ok" : "failed");
                 } else {
@@ -303,6 +319,15 @@ std::string browseForFolder (const char *title) {
     return result;
 }
 
+void unregisterApp (const char *appKey) {
+    HKEY uninstallKey;
+
+    if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, UNINST_KEY, 0, KEY_ALL_ACCESS, & uninstallKey) == ERROR_SUCCESS) {
+        RegDeleteKey (uninstallKey, appKey);
+        RegCloseKey (uninstallKey);
+    }
+}
+
 void registerApp (
     const char *appKey,
     const char *appName,
@@ -322,7 +347,7 @@ void registerApp (
     ExpandEnvironmentStrings (uninstCmd, uninstCmdCopy, sizeof (uninstCmdCopy));
     ExpandEnvironmentStrings (appIcon, appIconCopy, sizeof (appIconCopy));
 
-    if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", 0, KEY_ALL_ACCESS, & uninstallKey) == ERROR_SUCCESS) {
+    if (RegOpenKeyEx (HKEY_LOCAL_MACHINE, UNINST_KEY, 0, KEY_ALL_ACCESS, & uninstallKey) == ERROR_SUCCESS) {
         if (RegCreateKeyEx (uninstallKey, appKey, 0, 0, 0, KEY_ALL_ACCESS, 0, & productKey, 0) == ERROR_SUCCESS) {
             RegSetValueEx (productKey, "DisplayName", 0, REG_SZ, (const BYTE *) appName, strlen (appName) + 1);
             RegSetValueEx (productKey, "DisplayIcon", 0, REG_SZ, (const BYTE *) appIconCopy, strlen (appIconCopy) + 1);
@@ -338,27 +363,126 @@ void registerApp (
     }
 }
 
-void registerAction (SetupAction action, char *subject) {
+void registerAction (Journal::Action action, char *subject) {
     static FILE *journal = 0;
 
     if (!journal) {
         Cfg cfg;
         std::string journalPath = cfg.getString ("Main", "journalPath");
         char journalPathName [MAX_PATH];
-        journal = fopen (PathCombine (journalPathName, journalPath.c_str (), "install.jou"), "a");
+        char journalInit [] { 'J', 'I', };
+        journal = fopen (PathCombine (journalPathName, journalPath.c_str (), "install.jou"), "wb");
+
+        if (journal) {
+            std::string appName = cfg.getString (SECTION_MAIN, "appName");
+
+            fwrite (journalInit, 2, 1, journal);
+            fwrite (appName.c_str (), 1, appName.length () + 1, journal);
+        }
     }
 
     if (journal) {
+        Journal::Rec *rec;
         char *actionName;
 
         switch (action) {
-            case SetupAction::COPY_FILE: actionName = "copyFile"; break;
-            case SetupAction::CREATE_DIR: actionName = "createDir"; break;
-            case SetupAction::CREATE_SHORTCUT: actionName = "createShortcut"; break;
+            case Journal::Action::COPY_FILE: actionName = "copyFile"; break;
+            case Journal::Action::CREATE_DIR: actionName = "createDir"; break;
+            case Journal::Action::CREATE_SHORTCUT: actionName = "createShortcut"; break;
             default: actionName = "unknownAction";
         }
 
-        fprintf (journal, "%s,%s\n", actionName, subject);
+        uint32_t subjSize = strlen (subject);
+        uint32_t size = sizeof (Journal::Rec) + subjSize - 1;
+
+        rec = (Journal::Rec *) malloc (size);
+
+        rec->action = action;
+        rec->size = size;
+        
+        memcpy (rec->subject, subject, subjSize);
+        fwrite (rec, size, 1, journal);
         fflush (journal);
+
+        free (rec);
     }
+}
+
+bool copySetupToolTo (const char *dest) {
+    char setupToolPath [MAX_PATH], destPath [MAX_PATH], uninstPath [MAX_PATH], fileName [MAX_PATH];
+    GetModuleFileName (0, setupToolPath, sizeof (setupToolPath));
+    strcpy (fileName, setupToolPath);
+    PathStripPath (fileName);
+    ExpandEnvironmentStrings (dest, uninstPath, sizeof (uninstPath));
+    PathCombine (destPath, uninstPath, fileName);
+    
+    bool result = CopyFile (setupToolPath, destPath, 0);
+    unsigned long error;
+
+    if (!result) error = GetLastError ();
+
+    return result;
+}
+
+bool copyJournalTo (const char *dest) {
+    char journalPath [MAX_PATH], destPath [MAX_PATH], uninstPath [MAX_PATH], fileName [MAX_PATH];
+    GetModuleFileName (0, journalPath, sizeof (journalPath));
+    PathRemoveFileSpec (journalPath);
+    PathAppend (journalPath, UNINST_JOURNAL);
+
+    ExpandEnvironmentStrings (dest, uninstPath, sizeof (uninstPath));
+    PathCombine (destPath, uninstPath, UNINST_JOURNAL);
+    
+    bool result = CopyFile (journalPath, destPath, 0);
+    unsigned long error;
+
+    if (!result) error = GetLastError ();
+
+    return result;
+}
+
+char *expandPath (const char *path, char *dest, Cfg *cfg) {
+    char untranslatedPath [MAX_PATH];
+    
+    ExpandEnvironmentStrings (path, untranslatedPath, MAX_PATH);
+
+    if (strnicmp (untranslatedPath, STARTUP, STARTUP_LEN) == 0) {
+        SHGetFolderPath (GetConsoleWindow (), CSIDL_COMMON_STARTUP, 0, SHGFP_TYPE_DEFAULT, dest);
+        strcat (dest, untranslatedPath + STARTUP_LEN);
+    } else if (strnicmp (untranslatedPath, PRGGRP, PRGGRP_LEN) == 0) {
+        getProgramGroupPath (cfg, dest);
+        strcat (dest, untranslatedPath + PRGGRP_LEN);
+    } else {
+        strcpy (dest, untranslatedPath);
+    }
+
+    return dest;
+}
+
+char *getProgramGroupPath (Cfg *cfg, char *dest) {
+    SHGetFolderPath (GetConsoleWindow (), CSIDL_COMMON_PROGRAMS, 0, SHGFP_TYPE_DEFAULT, dest);
+    PathAppend (dest, cfg->programGroupName.c_str ());
+    PathAppend (dest, cfg->getString (SECTION_MAIN, "appName").c_str ());
+
+    return dest;
+}
+
+void addUninstallShortcut (Cfg *cfg) {
+    char fileName [MAX_PATH], filePath [MAX_PATH], buffer [1000], cmd [MAX_PATH];
+    std::string label = std::string ("Uninstall ") + cfg->getString (SECTION_MAIN, "appName");
+    
+    // Extracting setup.exe filename (in case of possible change in the future)
+    GetModuleFileName (0, filePath, sizeof (filePath));
+    strcpy (fileName, filePath);
+    PathStripPath (fileName);
+    
+    // Constructing uninstall shortcut path at the specified dest
+    PathCombine (filePath, expandPath (cfg->getString (SECTION_SHORTCUTS, "uninstShortcutPath").c_str (), buffer, cfg), (label + ".lnk").c_str ());
+
+    // Constructing uninstall command
+    expandPath (cfg->getString (SECTION_MAIN, "uninstPath").c_str (), cmd, cfg);
+    PathAppend (cmd, fileName);
+
+    // Making the shortcut itself
+    makeShortcut (cmd, "-uninst", filePath, label.c_str ());
 }

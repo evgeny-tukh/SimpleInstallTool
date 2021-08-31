@@ -2,11 +2,12 @@
 ;sourceDir=C:\Users\jecat\source\repos\ecdis-rep-last\InstallerImage
 defaultDestDir=%ProgramFiles(x86)%\MARIS\ECDIS900_4
 package=image.zip
-appName=SIMRAD ECDIS900
+appName=ECDIS900
 appKey=MECDIS900
 appIcon=%programfiles(x86)%\MARIS\ECDIS900_4\bin\ecdis900.exe
 verMajor=5
 verMinor=0
+; uninstPath is a path to where setup.exe will be copied (if uninstPath is present and non-empty)
 uninstPath=%programfiles(x86)%\MARIS\ECDIS900_4
 publisher=Navico
 
@@ -20,14 +21,19 @@ Number=4
 2=ECDIS_UserData,c:\ECDIS_UserData
 3=MARIS,%programfiles(x86)%\MARIS
 4=ProgramData,%programdata%\MARIS
+copySetupTool=1
+
 
 [Shortcuts]
 Number=4
 DefProgramGroup=MARIS
-1=MARIS\ECDIS900.lnk,%programfiles(x86)%\MARIS\ECDIS900_4\bin\ecdis900.exe,ECDIS900
-2=MARIS\sm.lnk,%programfiles(x86)%\MARIS\SMonitor\SMonitor.exe,Sensor Monitor
-3=startup\sm.lnk,%programfiles(x86)%\MARIS\SMonitor\SMonitor.exe,Sensor Monitor
-4=startup\CaptureScreenClientApp.lnk,%programfiles(x86)%\MARIS\ECDIS900_4\bin\CaptureScreenClientApp.exe,CaptureScreenClient
+addUninstShortcut=1
+; uninstShortcutPath should not contain .lnk file name. The file name will be added by the setup.exe while shortcut is making.
+uninstShortcutPath=__prggrp__
+1=__prggrp__\ECDIS900.lnk,%programfiles(x86)%\MARIS\ECDIS900_4\bin\ecdis900.exe,ECDIS900
+2=__prggrp__\Sensor Monitor.lnk,%programfiles(x86)%\MARIS\SMonitor\SMonitor.exe,Sensor Monitor
+3=__startup__\Sensor Monitor.lnk,%programfiles(x86)%\MARIS\SMonitor\SMonitor.exe,Sensor Monitor
+4=__startup__\CaptureScreenClientApp.lnk,%programfiles(x86)%\MARIS\ECDIS900_4\bin\CaptureScreenClientApp.exe,CaptureScreenClient
 
 [Tasks]
 Number=3

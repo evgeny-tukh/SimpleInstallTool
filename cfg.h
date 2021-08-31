@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 struct Cfg {
-    std::string sourceDir, script, destDir, defDestDir;
+    std::string sourceDir, script, destDir, defDestDir, programGroupName;
 
     Cfg () {
         char scriptPath [MAX_PATH], workingDir [MAX_PATH];
